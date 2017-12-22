@@ -1,6 +1,7 @@
 /*-----------------------------------------------------------------------------
 A simple echo bot for the Microsoft Bot Framework. 
 -----------------------------------------------------------------------------*/
+require("dotenv-extended").load();
 
 var restify = require("restify");
 var builder = require("botbuilder");
@@ -40,7 +41,9 @@ var tableStorage = new botbuilder_azure.AzureBotStorage(
 
 // Create your bot with a function to receive messages from the user
 var bot = new builder.UniversalBot(connector);
-bot.set("storage", tableStorage);
+// bot.set("storage", tableStorage);
+var inMemoryStorage = new builder.MemoryBotStorage();
+bot.set("storage", inMemoryStorage);
 
 // Make sure you add code to validate these fields
 var luisAppId = process.env.LuisAppId;
@@ -61,7 +64,7 @@ var recognizer = new builder.LuisRecognizer(LuisModelUrl);
 var intents = new builder.IntentDialog({ recognizers: [recognizer] })
     .matches("Greeting", session => {
         session.send(
-            "!!2 You reached Greeting intent, you said '%s'.",
+            "!!3 You reached Greeting intent, you said '%s'.",
             session.message.text
         );
     })
