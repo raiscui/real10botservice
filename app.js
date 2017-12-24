@@ -1,7 +1,9 @@
 /*-----------------------------------------------------------------------------
 A simple echo bot for the Microsoft Bot Framework. 
 -----------------------------------------------------------------------------*/
-require("dotenv-extended").load();
+if (!process.env.MicrosoftAppI) {
+    require("dotenv-extended").load();
+}
 
 var restify = require("restify");
 var builder = require("botbuilder");
@@ -48,16 +50,20 @@ bot.set("storage", inMemoryStorage);
 // Make sure you add code to validate these fields
 var luisAppId = process.env.LuisAppId;
 var luisAPIKey = process.env.LuisAPIKey;
+var BING_Spell_Check_API_KEY = process.env.BING_Spell_Check_API_KEY;
 var luisAPIHostName =
     process.env.LuisAPIHostName || "westus.api.cognitive.microsoft.com";
 
 const LuisModelUrl =
     "https://" +
     luisAPIHostName +
-    "/luis/v1/application?id=" +
+    "/luis/v2/apps/" +
     luisAppId +
-    "&subscription-key=" +
-    luisAPIKey;
+    "?subscription-key=" +
+    luisAPIKey +
+    "&spellCheck=true&bing-spell-check-subscription-key=" +
+    BING_Spell_Check_API_KEY +
+    "&verbose=true&timezoneOffset=0&q=";
 
 // Main dialog with LUIS
 var recognizer = new builder.LuisRecognizer(LuisModelUrl);
