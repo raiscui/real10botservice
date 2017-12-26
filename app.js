@@ -13,6 +13,12 @@ let fp = require("lodash/fp");
 var restify = require("restify");
 var builder = require("botbuilder");
 var botbuilder_azure = require("botbuilder-azure");
+var moviedb = require("./tmdb.js");
+var moviedbConfig;
+moviedb.configuration().then(res => {
+    moviedbConfig = res;
+    log.debug("config: %j", moviedbConfig);
+});
 
 // Setup Restify Server
 var server = restify.createServer();
@@ -82,17 +88,56 @@ const LuisModelUrl =
     "/luis/v2.0/apps/" +
     luisAppId +
     "?subscription-key=" +
-    luisAPIKey +
-    "&spellCheck=true&bing-spell-check-subscription-key=" +
-    BING_Spell_Check_API_KEY +
-    "&verbose=true&timezoneOffset=0&q=";
+    luisAPIKey;
+// + "&spellCheck=true&bing-spell-check-subscription-key=" + BING_Spell_Check_API_KEY;
+// + "&verbose=true&timezoneOffset=0&q=";
+const handleErrorResponse = (session, error) => {
+    session.send("Oops! Something went wrong. Try again later.");
+    console.error(error);
+};
+const handleApiResponse = (session, movies) => {
+    if (movies && movies.constructor === Array && movies.length > 0) {
+        var cards = [];
+        for (var i = 0; i < movies.length; i++) {
+            cards.push(constructCard(session, movies[i]));
+        }
 
-// console.log(LuisModelUrl);
+        // create reply with Carousel AttachmentLayout
+        var reply = new builder.Message(session)
+            .text("Here are some movies I found")
+            .attachmentLayout(builder.AttachmentLayout.list)
+            .attachments(cards);
+        session.send(reply);
+    } else {
+        session.send("Couldn't find movies for this one");
+    }
+};
 
+const constructCard = (session, image) => {
+    return (
+        new builder.HeroCard(session)
+            .title(image.name)
+            // .subtitle(image.hostPageDisplayUrl)
+            .images([
+                builder.CardImage.create(
+                    session,
+                    `${moviedbConfig.images.base_url}${
+                        moviedbConfig.images.poster_sizes[
+                            moviedbConfig.images.poster_sizes.length - 3
+                        ]
+                    }${image.poster_path}`
+                )
+            ])
+    );
+    // .buttons([
+    //     builder.CardAction.openUrl(session, image.hostPageUrl, "Buy from merchant"),
+    //     builder.CardAction.openUrl(session, image.webSearchUrl, "Find more in Bing")
+    // ])
+};
 // Main dialog with LUIS
 var recognizer = new builder.LuisRecognizer(LuisModelUrl);
 recognizer.onEnabled((ctx, cb) => {
-    log.debug("luis on enabled");
+    log.debug("===========luis on enabled");
     cb(null, true);
 });
 // bot.recognizer(recognizer);
@@ -133,6 +178,11 @@ var intents = new builder.IntentDialog({ recognizers: [recognizer] })
                 "dialogData"
             ]);
             log.debug("/ search");
+            if (!_.isEmpty(session.conversationData.movieNames)) {
+                session.send(
+                    _.pick(session.conversationData.movieNames, ["entity"])
+                );
+            }
             session.send("stste %j", session.sessionState);
 
             session.send("/ search %j", data);
@@ -141,19 +191,56 @@ var intents = new builder.IntentDialog({ recognizers: [recognizer] })
             // next({ response: "search next" });
 
             // ─────────────────────────────────────────────────────────────────
+            /**
+             * {
+             *  entity: 'movies',
+             * type: 'movie',
+             *  startIndex: 10,
+             *  endIndex: 15,
+             *  score: 0.8963896 }
+             * score is dyn
+             */
             var movie = builder.EntityRecognizer.findAllEntities(
                 args.entities,
                 "movie"
             );
+            var movieNames = builder.EntityRecognizer.findAllEntities(
+                args.entities,
+                "builtin.encyclopedia.tv.program"
+            ).concat(
+                builder.EntityRecognizer.findAllEntities(
+                    args.entities,
+                    "builtin.encyclopedia.film.film"
+                ),
+                builder.EntityRecognizer.findAllEntities(
+                    args.entities,
+                    "movieName"
+                )
+            );
 
-            var movies = builder.EntityRecognizer.findAllMatches("movie");
+            session.conversationData.movieNames = movieNames.concat(
+                session.conversationData.movieNames
+            );
 
             log.debug(movie);
+            log.debug(movieNames);
 
             session.send(
                 "You reached search intent, you said '%s'.",
                 session.message.text
             );
+            let aMovieName = fp.get("entity")(fp.first(movieNames));
+            moviedb
+                .searchMovie({ query: aMovieName })
+                .then(res => {
+                    // log.info(res)
+                    handleApiResponse(session, res.results);
+                    session.endDialog();
+                })
+                .catch(error => {
+                    handleErrorResponse(session, error);
+                    session.endDialog();
+                });
         }
     ])
     .matches(
