@@ -211,7 +211,8 @@ function filterKeyWord(session, args) {
             "looking for",
             "looking",
             "see",
-            "seeing"
+            "seeing",
+            "seeking"
         ]);
         log.debug("allw:", allw);
 
