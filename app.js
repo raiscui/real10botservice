@@ -103,55 +103,47 @@ var intents = new builder.IntentDialog({ recognizers: [recognizer] })
     .onBegin((session, args, next) => {
         log("in / intents");
 
-        session.send("in /");
+        // session.send("in /");
 
-        session.send("/ begin:arg: %j", args);
-        session.send("stste %j", session.sessionState);
+        // session.send("/ begin:arg: %j", args);
+        // session.send("stste %j", session.sessionState);
         let data = _.pick(session, [
             "message.text",
             "conversationData",
             "dialogData"
         ]);
         log.debug("/ ");
-        session.send("/ %j", data);
+        // session.send("/ %j", data);
 
         next();
     })
     // Utilities.StartOver
     .matchesAny(["Utilities.StartOver", "Utilities.Cancel"], session => {
         log.debug(intents);
-        session.endConversation("OK,let's begin");
+        session.endConversation([
+            "OK,let's begin",
+            "How can I help you?",
+            "I'm back!"
+        ]);
     })
     .matches("Utilities.Help", (session, args) => {
         let data = _.pick(session, ["conversationData", "dialogData"]);
         log.debug("/ in help");
         log.debug(data);
         log.debug(args);
-        session.send(
-            "/ You reached Help intent, you said '%s'.",
-            session.message.text
-        );
+        // session.send(
+        //     "/ You reached Help intent, you said '%s'.",
+        //     session.message.text
+        // );
         session.beginDialog("/help");
     })
     .matches("Utilities.ShowNext", "/next")
     .matchesAny(["search"], "/search")
-    .matches(
-        "greetings",
-        // (session, args) => {
-        //     // session.send(
-        //     //     "!!3 You reached Greeting intent, you said '%s'.",
-        //     //     session.message.text
-        //     // );
-        //     // session.send("/ greeting:arg: %j", args);
-        //     // session.replaceDialog("/", (args.intent = "search"));
-        // }
-        "/greetings"
-    )
+    .matches("greetings", "/greetings")
     .onDefault((session, args) => {
         session.conversationData.search = session.conversationData.search || {
             use: "discover"
         };
-
         let searchData = session.conversationData.search;
 
         let skw = filterKeyWord(session, args);
@@ -251,16 +243,12 @@ bot.dialog("/search", [
         ]);
         log.debug("/ search");
         if (searchData.q.query) {
-            session.send("last movie name : %s", searchData.q.query);
+            session.send("last movie name use : %s", searchData.q.query);
         }
-        session.send("stste %j", session.sessionState);
+        // session.send("stste %j", session.sessionState);
 
-        session.send("/ search %j", data);
-        session.send("/ search arg: %j", args);
-        session.send(
-            "You reached search intent, you said '%s'.",
-            session.message.text
-        );
+        // session.send("/ search %j", data);
+        // session.send("/ search arg: %j", args);
 
         // movie ─────────────────────────────────────────────────────────────────
         /**
@@ -299,7 +287,11 @@ bot.dialog("/search", [
                     "YYYY-MM-DD"
                 );
             }
-            session.send("I will finding some movies are in theatres ");
+            session.send([
+                "I will finding some movies are in theatres ",
+                "Here is some movies released within a month",
+                "Top Movie!"
+            ]);
         }
         let daterange = builder.EntityRecognizer.findEntity(
             args.entities,
@@ -314,7 +306,10 @@ bot.dialog("/search", [
                 "YYYY-MM-DD"
             );
             searchData.q["primary_release_date.lte"] = end.format("YYYY-MM-DD");
-            session.send("searching  movies released in " + daterange.entity);
+            session.send([
+                "searching  movies released in " + daterange.entity,
+                "will find movies for " + daterange.entity
+            ]);
         }
         //primary_release_year
         // if (daterange)
@@ -349,13 +344,13 @@ bot.dialog("/search", [
             searchData.page = 1;
             searchData.q.query = movieName;
             searchData.use = "search";
-            session.send("search movie name %j", movieName);
+            session.send("search movie named %j", movieName);
         } else if (movieName && searchData.q.query) {
             // 替换
             searchData.q.query = movieName;
             searchData.page = 1;
             searchData.use = "search";
-            session.send("change movie name %j", movieName);
+            session.send("change movie name to %j", movieName);
         } else if (!movieName && searchData.q.query) {
             // 没新的
         } else {
@@ -559,24 +554,21 @@ var helpintents = new builder.IntentDialog({
         log.debug("/help in help");
         log.debug(data);
         log.debug(args);
-        session.send(
-            "/help You reached Help intent, you said '%s'.",
-            session.message.text
-        );
+        session.send([
+            'you can say "search matrix/star war" and "start over" to clear memory',
+            'eg: "find some movie published in this month"'
+        ]);
         session.endDialogWithResult({ response: "help end" });
     })
     .matches("Utilities.Cancel", session => {
         session.send(
-            "/help You reached Cancel intent, you said '%s'.",
+            "/ You reached Cancel intent, you said '%s'.",
             session.message.text
         );
-        session.endDialog("help end for Cancel");
+        session.endDialog(" end for Cancel");
     })
     .onDefault(session => {
-        session.send(
-            "h Sorry, I did not understand '%s'.",
-            session.message.text
-        );
+        session.send('h: test channal.  only "help" you can say .');
     });
 //     .triggerAction({
 //         matches: /^(hhhh|sssf)/i
