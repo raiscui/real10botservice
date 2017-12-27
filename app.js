@@ -588,7 +588,7 @@ const handleApiResponse = (session, movies) => {
 
         // create reply with Carousel AttachmentLayout
         var reply = new builder.Message(session)
-            .text(session.conversationData.search.total_pages.toString())
+            // .text(session.conversationData.search.total_pages.toString())
             .attachmentLayout(builder.AttachmentLayout.list)
             .attachments(cards);
         session.send(reply);
