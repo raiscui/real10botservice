@@ -184,6 +184,10 @@ function filterKeyWord(session, args) {
             args.entities,
             "builtin.datetimeV2.datetimerange"
         ),
+        builder.EntityRecognizer.findEntity(
+            args.entities,
+            "builtin.datetimeV2.daterange"
+        ),
         builder.EntityRecognizer.findAllEntities(args.entities, "daici"),
         builder.EntityRecognizer.findAllEntities(args.entities, "actor")
     );
@@ -310,14 +314,23 @@ bot.dialog("/search", [
         // movieNames ─────────────────────────────────────────────────────────────────
 
         let movieNames = [].concat(
-            builder.EntityRecognizer.findAllEntities(
+            builder.EntityRecognizer.findEntity(
                 args.entities,
                 "builtin.encyclopedia.film.film"
             ),
-            builder.EntityRecognizer.findAllEntities(args.entities, "movieName")
+            builder.EntityRecognizer.findEntity(args.entities, "movieName")
         );
 
-        let movieName = fp.get("entity")(fp.first(movieNames));
+        let movieName = fp.get("entity")(
+            fp.first(
+                fp.find(entitie => {
+                    if (!entitie) {
+                        return false;
+                    }
+                    return entitie.score > 0.5;
+                })(movieNames)
+            )
+        );
 
         if (movieName && !searchData.q.query) {
             // 新发现
@@ -340,9 +353,16 @@ bot.dialog("/search", [
         // • • • • • tv
         let tvName = fp.get("entity")(
             fp.first(
-                builder.EntityRecognizer.findAllEntities(
-                    args.entities,
-                    "builtin.encyclopedia.tv.program"
+                fp.find(entitie => {
+                    if (!entitie) {
+                        return false;
+                    }
+                    return entitie.score > 0.5;
+                })(
+                    builder.EntityRecognizer.findAllEntities(
+                        args.entities,
+                        "builtin.encyclopedia.tv.program"
+                    )
                 )
             )
         );
@@ -372,14 +392,18 @@ bot.dialog("/search", [
 
         let searchKeyWords = [].concat(
             builder.EntityRecognizer.findAllEntities(args.entities, "movie"),
-            builder.EntityRecognizer.findAllEntities(args.entities, "genre"),
-            builder.EntityRecognizer.findAllEntities(
-                args.entities,
-                "builtin.datetimeV2.datetimerange"
-            )
+            builder.EntityRecognizer.findAllEntities(args.entities, "genre")
         );
 
-        if (_.isEmpty(searchKeyWords) && !movieName) {
+        // ─────────────────────────────────────────────────────────────────
+
+        if (
+            _.isEmpty(searchKeyWords) &&
+            !datetimerange &&
+            !daterange &&
+            !movieName
+        ) {
+            log.debug("========================= empty ");
             let skw = filterKeyWord(session, args);
             if (skw) {
                 searchData.q = {
