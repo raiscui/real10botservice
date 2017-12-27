@@ -44,11 +44,17 @@ reader.addListener("data", function(data) {
     console.log(data);
     // let amovie = { value: data[0], language: "en" };
 
-    let word = _.sample(act) + " " + data[0];
+    let word = data[0];
     let simpleObj = {
         text: word,
         intentName: "search",
-        entityLabels: []
+        entityLabels: [
+            {
+                entityName: "movieName",
+                startCharIndex: 0,
+                endCharIndex: data[0].length - 1
+            }
+        ]
     };
     if (movieSimples.length < 100) {
         movieSimples.push(simpleObj);
@@ -70,7 +76,7 @@ reader.addListener("end", function(data) {
 writeJsonF = () => {
     try {
         fse.writeJsonSync(
-            __dirname + `/simple/simple_${filen}.json`,
+            __dirname + `/simpleName/simple_${filen}.json`,
             movieSimples
         );
     } catch (err) {
