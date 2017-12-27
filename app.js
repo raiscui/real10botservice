@@ -441,16 +441,16 @@ intents.dialogResumed = (session, args) => {
         "dialogData"
     ]);
     log.debug("/ resume");
-    session.send("/ resume %j", data);
+    // session.send("/ resume %j", data);
     log.debug("/ resume data %j", data);
     log.debug("/ resume args %j", args);
 };
 
 bot.dialog("/greetings", function(session, args) {
-    session.send("/greetings:arg: %j", args);
+    // session.send("/greetings:arg: %j", args);
 
-    session.send("hello .");
-    session.send("stste %j", session.sessionState);
+    session.send(["hello .", "Hi! there!"]);
+    // session.send("stste %j", session.sessionState);
     session.endDialog();
 });
 
