@@ -63,7 +63,7 @@ bot.on("conversationUpdate", message => {
     if (message.membersAdded) {
         message.membersAdded.forEach(identity => {
             // 当启动, 有两个用户加进来 , 用户 和 bot, 分辨 bot
-            if (identity.id !== message.address.bot.id) {
+            if (identity.id == message.address.bot.id) {
                 const reply = new builder.Message()
                     .address(message.address)
                     .text("How can I help you?");
