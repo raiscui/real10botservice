@@ -59,11 +59,11 @@ var inMemoryStorage = new builder.MemoryBotStorage();
 bot.set("storage", inMemoryStorage);
 
 bot.on("conversationUpdate", message => {
-    // console.log(message);
+    console.log(message);
     if (message.membersAdded) {
         message.membersAdded.forEach(identity => {
             // 当启动, 有两个用户加进来 , 用户 和 bot, 分辨 bot
-            if (identity.id === message.address.bot.id) {
+            if (identity.id !== message.address.bot.id) {
                 const reply = new builder.Message()
                     .address(message.address)
                     .text("How can I help you?");
@@ -118,9 +118,9 @@ var intents = new builder.IntentDialog({ recognizers: [recognizer] })
         next();
     })
     // Utilities.StartOver
-    .matches("Utilities.StartOver", session => {
+    .matchesAny(["Utilities.StartOver", "Utilities.Cancel"], session => {
         log.debug(intents);
-        session.endConversation("will restart");
+        session.endConversation("OK,let's begin");
     })
     .matches("Utilities.Help", (session, args) => {
         let data = _.pick(session, ["conversationData", "dialogData"]);
@@ -365,23 +365,23 @@ var intents = new builder.IntentDialog({ recognizers: [recognizer] })
     )
     .matches(
         "greetings",
-        (session, args) => {
-            // session.send(
-            //     "!!3 You reached Greeting intent, you said '%s'.",
-            //     session.message.text
-            // );
-            // session.send("/ greeting:arg: %j", args);
-            // session.replaceDialog("/", (args.intent = "search"));
-        }
-        // "flip"
+        // (session, args) => {
+        //     // session.send(
+        //     //     "!!3 You reached Greeting intent, you said '%s'.",
+        //     //     session.message.text
+        //     // );
+        //     // session.send("/ greeting:arg: %j", args);
+        //     // session.replaceDialog("/", (args.intent = "search"));
+        // }
+        "/greetings"
     )
 
-    .matches("Utilities.Cancel", session => {
-        session.send(
-            "You reached Cancel intent, you said '%s'.",
-            session.message.text
-        );
-    })
+    // .matches("Utilities.Cancel", session => {
+    //     session.send(
+    //         "You reached Cancel intent, you said '%s'.",
+    //         session.message.text
+    //     );
+    // })
     /*
 .matches('<yourIntent>')... See details at http://docs.botframework.com/builder/node/guides/understanding-natural-language/
 */
@@ -413,8 +413,8 @@ intents.dialogResumed = (session, args) => {
     log.debug("/ resume args %j", args);
 };
 
-bot.dialog("flip", function(session, args) {
-    session.send("/flip:arg: %j", args);
+bot.dialog("/greetings", function(session, args) {
+    session.send("/greetings:arg: %j", args);
 
     session.send("hello .");
     session.send("stste %j", session.sessionState);
