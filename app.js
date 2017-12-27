@@ -201,7 +201,18 @@ function filterKeyWord(session, args) {
             log.debug("message slice:", message);
         }
 
-        let allw = _.map(searchKeyWords, _.property("entity"));
+        let allw = _.map(searchKeyWords, _.property("entity")).concat([
+            "finding",
+            "searching",
+            "search",
+            "find",
+            "watch",
+            "watching",
+            "looking for",
+            "looking",
+            "see",
+            "seeing"
+        ]);
         log.debug("allw:", allw);
 
         message = _.trim(
@@ -209,9 +220,9 @@ function filterKeyWord(session, args) {
                 allw,
                 (msg, aw) => {
                     log.debug("msg, aw", msg, aw);
-                    return msg.replace(aw, "");
+                    return msg.replace(_.lowerCase(aw), "");
                 },
-                message
+                _.lowerCase(message)
             )
         );
         log.debug("message:", message);
