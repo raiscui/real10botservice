@@ -584,8 +584,8 @@ var tmdbImagePath = (posterPath, back = false) => {
 const constructCard = (session, movieCtx) => {
     return new builder.HeroCard(session)
         .title(movieCtx.title)
-        .text(movieCtx.id)
-        .subtitle(tmdbImagePath(movieCtx.backdrop_path))
+        .text(movieCtx.id.toString())
+        .subtitle(tmdbImagePath(movieCtx.backdrop_path, true))
         .images([
             builder.CardImage.create(
                 session,
