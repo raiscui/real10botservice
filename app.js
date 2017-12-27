@@ -379,7 +379,7 @@ bot.dialog("/search", [
             )
         );
 
-        if (_.isEmpty(searchKeyWords) && !searchData.q.query) {
+        if (_.isEmpty(searchKeyWords) && !movieName) {
             let skw = filterKeyWord(session, args);
             if (skw) {
                 searchData.q = {

@@ -39,7 +39,7 @@ var configSetInfo = {
         .replace("{appId}", LUIS_appId)
         .replace("{versionId}", LUIS_versionId)
 };
-
+// _.deburr('déjà vu');
 var getSavePath = () => {
     return `/${savepath}/simple_${filen}.json`;
 };
@@ -74,11 +74,11 @@ var main = async n => {
         //     ]
         // };
         console.log("movieSimples.length:", movieSimples.length);
-
+        let title = obj.title.replace("'", " ");
         movieSimples.push(obj.title);
     }
     console.log("end movieSimples.length:", movieSimples.length);
-    if (page !== 300) {
+    if (page !== 100) {
         await main(page + 1);
     }
 };
