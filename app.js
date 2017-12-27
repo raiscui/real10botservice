@@ -337,7 +337,7 @@ var intents = new builder.IntentDialog({ recognizers: [recognizer] })
                         moviedb
                             .discoverTv(searchData.q)
                             .then(res => {
-                                // log.info(res)
+                                log.debug(res);
                                 searchData.page = res.page;
                                 searchData.total_pages = res.total_pages;
                                 handleApiResponse(session, res.results);
@@ -349,7 +349,8 @@ var intents = new builder.IntentDialog({ recognizers: [recognizer] })
                         moviedb
                             .discoverMovie(searchData.q)
                             .then(res => {
-                                // log.info(res)
+                                log.debug(res);
+
                                 searchData.page = res.page;
                                 searchData.total_pages = res.total_pages;
                                 handleApiResponse(session, res.results);
@@ -445,7 +446,7 @@ bot.dialog("/next", function(session, args) {
             moviedb
                 .searchMovie(searchData.q)
                 .then(res => {
-                    // log.info(res)
+                    log.debug(res);
                     searchData.page = res.page;
                     searchData.total_pages = res.total_pages;
                     handleApiResponse(session, res.results);
@@ -459,7 +460,7 @@ bot.dialog("/next", function(session, args) {
             moviedb
                 .discoverTv(searchData.q)
                 .then(res => {
-                    // log.info(res)
+                    log.debug(res);
                     searchData.page = res.page;
                     searchData.total_pages = res.total_pages;
                     handleApiResponse(session, res.results);
@@ -471,7 +472,7 @@ bot.dialog("/next", function(session, args) {
             moviedb
                 .discoverMovie(searchData.q)
                 .then(res => {
-                    // log.info(res)
+                    log.debug(res);
                     searchData.page = res.page;
                     searchData.total_pages = res.total_pages;
                     handleApiResponse(session, res.results);
@@ -565,23 +566,32 @@ const handleApiResponse = (session, movies) => {
         session.send("Couldn't find movies for this one");
     }
 };
-
-const constructCard = (session, image) => {
-    return (
-        new builder.HeroCard(session)
-            .title(image.name)
-            // .subtitle(image.hostPageDisplayUrl)
-            .images([
-                builder.CardImage.create(
-                    session,
-                    `${moviedbConfig.images.base_url}${
-                        moviedbConfig.images.poster_sizes[
-                            moviedbConfig.images.poster_sizes.length - 3
-                        ]
-                    }${image.poster_path}`
-                )
-            ])
-    );
+var tmdbImagePath = (posterPath, back = false) => {
+    if (back) {
+        return `${moviedbConfig.images.base_url}${
+            moviedbConfig.images.backdrop_sizes[
+                moviedbConfig.images.backdrop_sizes.length - 2
+            ]
+        }${posterPath}`;
+    }
+    return `${moviedbConfig.images.base_url}${
+        moviedbConfig.images.poster_sizes[
+            moviedbConfig.images.poster_sizes.length - 3
+        ]
+    }${posterPath}`;
+};
+//movieCtx.poster_path
+const constructCard = (session, movieCtx) => {
+    return new builder.HeroCard(session)
+        .title(movieCtx.title)
+        .text(movieCtx.id)
+        .subtitle(tmdbImagePath(movieCtx.backdrop_path))
+        .images([
+            builder.CardImage.create(
+                session,
+                tmdbImagePath(movieCtx.poster_path)
+            )
+        ]);
     // .buttons([
     //     builder.CardAction.openUrl(session, image.hostPageUrl, "Buy from merchant"),
     //     builder.CardAction.openUrl(session, image.webSearchUrl, "Find more in Bing")
