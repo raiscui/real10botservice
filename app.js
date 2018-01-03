@@ -344,13 +344,19 @@ bot.dialog("/search", [
             searchData.page = 1;
             searchData.q.query = movieName;
             searchData.use = "search";
-            session.send("search movie named %j", movieName);
+            delete searchData.q["primary_release_date.gte"];
+            delete searchData.q["primary_release_date.lte"];
+            delete searchData.q.primary_release_year;
+            session.send("search named %j", movieName);
         } else if (movieName && searchData.q.query) {
             // 替换
             searchData.q.query = movieName;
             searchData.page = 1;
             searchData.use = "search";
-            session.send("change movie name to %j", movieName);
+            delete searchData.q["primary_release_date.gte"];
+            delete searchData.q["primary_release_date.lte"];
+            delete searchData.q.primary_release_year;
+            session.send("change name to %j", movieName);
         } else if (!movieName && searchData.q.query) {
             // 没新的
         } else {
@@ -417,12 +423,30 @@ bot.dialog("/search", [
                     query: skw,
                     page: 1
                 };
+                delete searchData.q["primary_release_date.gte"];
+                delete searchData.q["primary_release_date.lte"];
+                delete searchData.q.primary_release_year;
                 searchData.use = "search";
             } else {
                 searchData.q.query = null;
                 searchData.page = 1;
                 searchData.use = "discover";
             }
+        }
+
+        //  actor ─────────────────────────────────────────────────────────────────
+        // builtin.encyclopedia.people.person
+        let actor = builder.EntityRecognizer.findEntity(
+            args.entities,
+            "builtin.encyclopedia.people.person"
+        );
+        if (actor) {
+            searchData.use = "search";
+            searchData.page = 1;
+            searchData.q.query = actor.entity;
+            delete searchData.q["primary_release_date.gte"];
+            delete searchData.q["primary_release_date.lte"];
+            delete searchData.q.primary_release_year;
         }
 
         // ─────────────────────────────────────────────────────────────────
@@ -581,6 +605,13 @@ const handleErrorResponse = (session, error) => {
 };
 const handleApiResponse = (session, movies) => {
     if (movies && movies.constructor === Array && movies.length > 0) {
+        if (movies.media_type) {
+            // "media_type": "person",
+            movies = _.find(
+                movies,
+                _.over([{ media_type: "movie" }, { media_type: "tv" }])
+            );
+        }
         var cards = [];
         for (var i = 0; i < movies.length; i++) {
             cards.push(constructCard(session, movies[i]));
@@ -631,16 +662,19 @@ bot.dialog("/", intents);
 bot.dialog("/help", helpintents);
 function doTmdbSearch(searchData, session) {
     if (searchData.use == "search") {
+        let searchFn;
         log.debug("use search");
         if (searchData.q.query) {
             if (_.has(searchData, ["q", "primary_release_date.gte"])) {
                 searchData.q.primary_release_year = moment(
                     searchData.q["primary_release_date.gte"]
                 ).format("YYYY");
+                searchFn = moviedb.searchMovie;
+            } else {
+                searchFn = moviedb.searchMulti;
             }
             log.debug("searchData.q:", searchData.q);
-            moviedb
-                .searchMovie(searchData.q)
+            searchFn(searchData.q)
                 .then(res => {
                     // log.info(res)
                     searchData.page = res.page;

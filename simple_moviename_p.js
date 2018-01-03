@@ -23,6 +23,8 @@ const LUIS_appId = "cc01a368-404c-4e2b-a70a-60b71575ea10";
 // The version number of your LUIS app
 const LUIS_versionId = "0.1";
 
+const fromPage = 1;
+const toPage = 100;
 var configGetInfo = {
     LUIS_subscriptionKey: LUIS_programmaticKey,
     LUIS_appId: LUIS_appId,
@@ -39,7 +41,7 @@ var configSetInfo = {
         .replace("{appId}", LUIS_appId)
         .replace("{versionId}", LUIS_versionId)
 };
-// _.deburr('déjà vu');
+
 var getSavePath = () => {
     return `/${savepath}/simple_${filen}.json`;
 };
@@ -78,11 +80,11 @@ var main = async n => {
         movieSimples.push(obj.title);
     }
     console.log("end movieSimples.length:", movieSimples.length);
-    if (page !== 100) {
+    if (page !== toPage) {
         await main(page + 1);
     }
 };
-main(1).then(() => {
+main(fromPage).then(() => {
     console.log(movieSimples);
     // https://westeurope.api.cognitive.microsoft.com/luis/api/v2.0/apps/cc01a368-404c-4e2b-a70a-60b71575ea10/versions/0.1/features
     getInfo(configGetInfo)
