@@ -14,6 +14,7 @@ var restify = require("restify");
 var builder = require("botbuilder");
 var botbuilder_azure = require("botbuilder-azure");
 var moviedb = require("./tmdb.js");
+var { movieGenre } = require("./genre");
 var moviedbConfig;
 moviedb.configuration().then(res => {
     moviedbConfig = res;
@@ -59,7 +60,7 @@ var inMemoryStorage = new builder.MemoryBotStorage();
 bot.set("storage", inMemoryStorage);
 
 bot.on("conversationUpdate", message => {
-    console.log(message);
+    // console.log(message);
     if (message.membersAdded) {
         message.membersAdded.forEach(identity => {
             // 当启动, 有两个用户加进来 , 用户 和 bot, 分辨 bot
@@ -95,8 +96,18 @@ const LuisModelUrl =
 // Main dialog with LUIS
 var recognizer = new builder.LuisRecognizer(LuisModelUrl);
 recognizer.onEnabled((ctx, cb) => {
-    log.debug("===========luis on enabled");
+    // log.debug("===========luis on enabled");
+    // log.debug(ctx);
+    log.debug("msg:", ctx.message.text);
     cb(null, true);
+});
+recognizer.onFilter((ctx, res, cb) => {
+    log.debug("===========luis onFilter");
+    // log.debug(ctx);
+    log.debug(res);
+
+    // cb(null, true);
+    cb(null, res);
 });
 // bot.recognizer(recognizer);
 var intents = new builder.IntentDialog({ recognizers: [recognizer] })
@@ -107,11 +118,11 @@ var intents = new builder.IntentDialog({ recognizers: [recognizer] })
 
         // session.send("/ begin:arg: %j", args);
         // session.send("stste %j", session.sessionState);
-        let data = _.pick(session, [
-            "message.text",
-            "conversationData",
-            "dialogData"
-        ]);
+        // let data = _.pick(session, [
+        //     "message.text",
+        //     "conversationData",
+        //     "dialogData"
+        // ]);
         log.debug("/ ");
         // session.send("/ %j", data);
 
@@ -127,17 +138,11 @@ var intents = new builder.IntentDialog({ recognizers: [recognizer] })
         ]);
     })
     .matches("Utilities.Help", (session, args) => {
-        let data = _.pick(session, ["conversationData", "dialogData"]);
-        log.debug("/ in help");
-        log.debug(data);
-        log.debug(args);
-        // session.send(
-        //     "/ You reached Help intent, you said '%s'.",
-        //     session.message.text
-        // );
+        log.debug("=========!!!!!!!!!! help  !!!");
         session.beginDialog("/help");
     })
     .matches("Utilities.ShowNext", "/next")
+    .matchesAny(["Utilities.GoBack", "Utilities.ShowPrevious"], "/goback")
     .matchesAny(["search"], "/search")
     .matches("greetings", "/greetings")
     .onDefault((session, args) => {
@@ -147,18 +152,42 @@ var intents = new builder.IntentDialog({ recognizers: [recognizer] })
         let searchData = session.conversationData.search;
 
         let skw = filterKeyWord(session, args);
+        let actorKw = builder.EntityRecognizer.findAllEntities(
+            args.entities,
+            "actor"
+        );
         if (skw) {
             searchData.q = {
                 query: skw,
-                page: 1
+                page: 1,
+                sort_by: "popularity.desc"
             };
+
+            delete searchData.q["primary_release_date.gte"];
+            delete searchData.q["primary_release_date.lte"];
+            delete searchData.q.primary_release_year;
+            delete searchData.q.with_genres;
+            if (actorKw) {
+                searchData.actor = actorKw;
+            } else {
+                delete searchData.actor;
+            }
             searchData.use = "search";
         } else {
+            delete searchData.q["primary_release_date.gte"];
+            delete searchData.q["primary_release_date.lte"];
+            delete searchData.q.primary_release_year;
+            delete searchData.q.with_genres;
+            delete searchData.actor;
+
             searchData.q.query = null;
             searchData.page = 1;
             searchData.use = "discover";
         }
-        doTmdbSearch(searchData, session);
+        searchData.luo = true;
+
+        // session.beginDialog("/doTmdbSearch");
+        doTmdbSearch(session);
         session.endDialog();
 
         // session.send(
@@ -166,8 +195,14 @@ var intents = new builder.IntentDialog({ recognizers: [recognizer] })
         //     session.message.text
         // );
     });
+//genreKeyWord
 function filterKeyWord(session, args) {
     let message = session.message.text;
+    let actorKw = builder.EntityRecognizer.findAllEntities(
+        args.entities,
+        "actor"
+    );
+
     let searchKeyWords = [].concat(
         builder.EntityRecognizer.findAllEntities(args.entities, "action"),
         builder.EntityRecognizer.findAllEntities(args.entities, "movie"),
@@ -181,38 +216,33 @@ function filterKeyWord(session, args) {
             "builtin.datetimeV2.daterange"
         ),
         builder.EntityRecognizer.findAllEntities(args.entities, "daici"),
-        builder.EntityRecognizer.findAllEntities(args.entities, "actor")
+        actorKw,
+        builder.EntityRecognizer.findAllEntities(
+            args.entities,
+            "feedback::free"
+        ),
+        builder.EntityRecognizer.findAllEntities(args.entities, "genreKeyWord"),
+        builder.EntityRecognizer.findEntity(args.entities, "all"),
+        builder.EntityRecognizer.findEntity(args.entities, "movieSortType")
     );
     if (!_.isEmpty(searchKeyWords)) {
-        log.debug(searchKeyWords);
+        // log.debug(searchKeyWords);
         let act = _.find(searchKeyWords, { type: "action" });
-        log.debug("act:", act);
+        log.debug("act find:", act);
 
         if (act) {
             message = message.slice(act.endIndex + 1);
             log.debug("message slice:", message);
         }
 
-        let allw = _.map(searchKeyWords, _.property("entity")).concat([
-            "finding",
-            "searching",
-            "search",
-            "find",
-            "watch",
-            "watching",
-            "looking for",
-            "looking",
-            "see",
-            "seeing",
-            "seeking"
-        ]);
+        let allw = _.map(searchKeyWords, _.property("entity")).concat([]);
         log.debug("allw:", allw);
 
         message = _.trim(
             _.reduce(
                 allw,
                 (msg, aw) => {
-                    log.debug("msg, aw", msg, aw);
+                    log.debug("msg:", msg, " aw:", aw);
                     return msg.replace(_.lowerCase(aw), "");
                 },
                 _.lowerCase(message)
@@ -242,8 +272,10 @@ bot.dialog("/search", [
             "dialogData"
         ]);
         log.debug("/ search");
+        log.debug(searchData.q);
+
         if (searchData.q.query) {
-            session.send("last movie name use : %s", searchData.q.query);
+            // session.send("last movie name use : %s", searchData.q.query);
         }
         // session.send("stste %j", session.sessionState);
 
@@ -266,51 +298,47 @@ bot.dialog("/search", [
         );
         let movie = !_.isEmpty(_movie);
 
-        // • • • • •
-        //
-        // DATE TIME
-        //
-
-        let datetimerange = builder.EntityRecognizer.findEntity(
+        //  actor ─────────────────────────────────────────────────────────────────
+        // builtin.encyclopedia.people.person
+        let actors = builder.EntityRecognizer.findAllEntities(
             args.entities,
-            "builtin.datetimeV2.datetimerange"
+            "builtin.encyclopedia.people.person"
         );
-        if (datetimerange) {
-            let day = moment(
-                fp.first(datetimerange.resolution.values)["start"]
-            );
-            if (day.format("L") == moment().format("L")) {
-                searchData.q["primary_release_date.gte"] = moment()
-                    .add(-2, "week")
-                    .format("YYYY-MM-DD");
-                searchData.q["primary_release_date.lte"] = moment().format(
-                    "YYYY-MM-DD"
-                );
+        log.debug(" actors:", actors);
+        actor = _.chain(actors)
+            .map(entitie => {
+                entitie.score = entitie.score || 1.0;
+                return entitie;
+            })
+            .filter(entitie => {
+                return entitie.score > 0.4 || !entitie.score;
+            })
+
+            .maxBy("score")
+            .get("entity")
+            .value();
+
+        if (actor && !searchData.actor) {
+            //new
+            log.debug("find actor:", actor);
+            searchData.actor = actor;
+            delete searchData.actorIds;
+            searchData.page = 1;
+        } else if (actor && searchData.actor) {
+            searchData.page = 1;
+
+            //change
+            log.debug("find actor:", actor);
+            if (searchData.actor != actor) {
+                searchData.actor = actor;
+                delete searchData.actorIds;
             }
-            session.send([
-                "I will finding some movies are in theatres ",
-                "Here is some movies released within a month",
-                "Top Movie!"
-            ]);
+        } else if (!actor && searchData.actor) {
+            // keep
+        } else if (!actor && !searchData.actor) {
+            // no have
         }
-        let daterange = builder.EntityRecognizer.findEntity(
-            args.entities,
-            "builtin.datetimeV2.daterange"
-        );
 
-        log.debug("date range", daterange);
-        if (daterange) {
-            let start = moment(fp.first(daterange.resolution.values)["start"]);
-            let end = moment(fp.first(daterange.resolution.values)["end"]);
-            searchData.q["primary_release_date.gte"] = start.format(
-                "YYYY-MM-DD"
-            );
-            searchData.q["primary_release_date.lte"] = end.format("YYYY-MM-DD");
-            session.send([
-                "searching  movies released in " + daterange.entity,
-                "will find movies for " + daterange.entity
-            ]);
-        }
         //primary_release_year
         // if (daterange)
 
@@ -321,43 +349,53 @@ bot.dialog("/search", [
         // movieNames ─────────────────────────────────────────────────────────────────
 
         let movieNames = [].concat(
-            builder.EntityRecognizer.findEntity(
+            builder.EntityRecognizer.findAllEntities(
                 args.entities,
                 "builtin.encyclopedia.film.film"
             ),
-            builder.EntityRecognizer.findEntity(args.entities, "movieName")
+            builder.EntityRecognizer.findAllEntities(args.entities, "movieName")
         );
 
-        let movieName = fp.get("entity")(
-            fp.first(
-                fp.find(entitie => {
-                    if (!entitie) {
-                        return false;
-                    }
-                    return entitie.score > 0.5;
-                })(movieNames)
-            )
-        );
+        let movieName = _.chain(movieNames)
+            .map(entitie => {
+                entitie.score = entitie.score || 1.0;
+                return entitie;
+            })
+            .filter(entitie => {
+                return entitie.score > 0.5;
+            })
+            .maxBy("score")
+            .get("entity")
+            .value();
+        if (movieName) {
+            log.debug("find movieName:", movieName);
+            searchData.q.with_genres = null;
+            searchData.actor = null;
+        }
 
-        if (movieName && !searchData.q.query) {
+        // ─────────────────────────────────────────────────────────────────
+
+        if ((movieName || actor) && !searchData.q.query) {
             // 新发现
             searchData.page = 1;
-            searchData.q.query = movieName;
+            searchData.q.query = movieName || actor;
             searchData.use = "search";
             delete searchData.q["primary_release_date.gte"];
             delete searchData.q["primary_release_date.lte"];
             delete searchData.q.primary_release_year;
-            session.send("search named %j", movieName);
-        } else if (movieName && searchData.q.query) {
+            session.send("search  %s", movieName || actor);
+        } else if ((movieName || actor) && searchData.q.query) {
             // 替换
-            searchData.q.query = movieName;
-            searchData.page = 1;
-            searchData.use = "search";
-            delete searchData.q["primary_release_date.gte"];
-            delete searchData.q["primary_release_date.lte"];
-            delete searchData.q.primary_release_year;
-            session.send("change name to %j", movieName);
-        } else if (!movieName && searchData.q.query) {
+            if ((movieName || actor) != searchData.q.query) {
+                searchData.q.query = movieName || actor;
+                searchData.page = 1;
+                searchData.use = "search";
+                delete searchData.q["primary_release_date.gte"];
+                delete searchData.q["primary_release_date.lte"];
+                delete searchData.q.primary_release_year;
+                session.send("change search words to %s", movieName || actor);
+            }
+        } else if (!(movieName || actor) && searchData.q.query) {
             // 没新的
         } else {
             // all null
@@ -383,70 +421,172 @@ bot.dialog("/search", [
         if (hasTvName) {
             searchData.tv = true;
         }
+
+        // ─────────────────────────────────────────────────────────────────
+
         // • • • • •
+        //
+        // DATE TIME
+        //
 
-        // • • • • • remove the "search" genre
+        let dateTimeRange = builder.EntityRecognizer.findEntity(
+            args.entities,
+            "builtin.datetimeV2.datetimerange"
+        );
+        if (dateTimeRange) {
+            let day = moment(
+                fp.first(dateTimeRange.resolution.values)["start"]
+            );
+            if (day.format("L") == moment().format("L")) {
+                searchData.q["primary_release_date.gte"] = moment()
+                    .add(-2, "week")
+                    .format("YYYY-MM-DD");
+                searchData.q["primary_release_date.lte"] = moment().format(
+                    "YYYY-MM-DD"
+                );
+            }
+            session.send([
+                "I will finding some movies are in theatres ",
+                "Here is some movies released within a month",
+                "Top Movie!"
+            ]);
+        }
+        let dateRange = builder.EntityRecognizer.findEntity(
+            args.entities,
+            "builtin.datetimeV2.daterange"
+        );
 
-        let someOther = fp.find(
-            _.over([
-                { entity: "some" },
-                { entity: "other" },
-                { entity: "another" },
-                { entity: "else" }
-            ])
-        )(builder.EntityRecognizer.findAllEntities(args.entities, "genre"));
+        log.debug("date range", dateRange);
+        if (dateRange) {
+            let start = moment(fp.first(dateRange.resolution.values)["start"]);
+            let end = moment(fp.first(dateRange.resolution.values)["end"]);
+            searchData.q["primary_release_date.gte"] = start.format(
+                "YYYY-MM-DD"
+            );
+            searchData.q["primary_release_date.lte"] = end.format("YYYY-MM-DD");
+            session.send([
+                "searching  movies released in " + dateRange.entity,
+                "will find movies for " + dateRange.entity
+            ]);
+        }
+        // ────────────────────────────────────────────────────────────────────────────────
 
-        if (someOther) {
-            searchData.q.query = null;
+        let someOther = builder.EntityRecognizer.findAllEntities(
+            args.entities,
+            "feedback::free"
+        );
+
+        // if (someOther) {
+        //     // 要其他的 , 就删了 电影名字
+        //     searchData.q.query = null;
+        //     searchData.use = "discover";
+        // }
+
+        // ─────────────────────────────────────────────────────────────────
+
+        let genresE = builder.EntityRecognizer.findAllEntities(
+            args.entities,
+            "genre"
+        );
+        let genres = _.chain(genresE).map("resolution.values[0]");
+        // log.debug("genres:===>", genres);
+
+        let gIds = _.chain(movieGenre)
+            .filter(
+                _.overSome(
+                    genres
+                        .map(g => {
+                            return {
+                                name: g
+                            };
+                        })
+                        .value()
+                )
+            )
+            .map("id")
+            .join(",")
+            .value();
+        log.debug("gids:", gIds);
+        if (gIds) {
             searchData.use = "discover";
+            searchData.q.with_genres = gIds;
         }
 
-        // • • • • •
+        let all = builder.EntityRecognizer.findEntity(args.entities, "all");
+        if (all) {
+            delete searchData.q.with_genres;
+        }
+        // sort type ─────────────────────────────────────────────────────────────────
 
-        let searchKeyWords = [].concat(
-            builder.EntityRecognizer.findAllEntities(args.entities, "movie"),
-            builder.EntityRecognizer.findAllEntities(args.entities, "genre")
+        let sortTypeE = builder.EntityRecognizer.findEntity(
+            args.entities,
+            "movieSortType"
         );
+        let sortType = _.get(sortTypeE, "resolution.values[0]");
+
+        if (sortType == "top") {
+            searchData.q.sort_by = "popularity.desc";
+            searchData.use = "discover";
+        }
+        if (sortType == "new") {
+            searchData.q.sort_by = "release_date.desc";
+            searchData.use = "discover";
+        }
+        if (sortType == "best") {
+            searchData.q.sort_by = "vote_average.desc";
+            searchData.use = "discover";
+        }
 
         // ─────────────────────────────────────────────────────────────────
 
         if (
-            _.isEmpty(searchKeyWords) &&
-            !datetimerange &&
-            !daterange &&
-            !movieName
+            // _.isEmpty(searchKeyWords) &&
+            !dateTimeRange &&
+            !dateRange &&
+            !movieName &&
+            !actor &&
+            !gIds &&
+            !all &&
+            !sortType
         ) {
-            log.debug("========================= empty ");
+            log.debug("========================= KeyWords empty ");
+            // 吧 电影名字 什么的 搜索词过滤出来
             let skw = filterKeyWord(session, args);
+            let actorKw = builder.EntityRecognizer.findAllEntities(
+                args.entities,
+                "actor"
+            );
+
             if (skw) {
                 searchData.q = {
                     query: skw,
-                    page: 1
+                    page: 1,
+                    sort_by: "popularity.desc"
                 };
                 delete searchData.q["primary_release_date.gte"];
                 delete searchData.q["primary_release_date.lte"];
                 delete searchData.q.primary_release_year;
+                delete searchData.q.with_genres;
+                if (actorKw) {
+                    searchData.actor = actorKw;
+                } else {
+                    delete searchData.actor;
+                }
                 searchData.use = "search";
             } else {
-                searchData.q.query = null;
+                // 啥都没过滤出来 空了, 就discover
+                delete searchData.q["primary_release_date.gte"];
+                delete searchData.q["primary_release_date.lte"];
+                delete searchData.q.primary_release_year;
+                delete searchData.q.with_genres;
+                delete searchData.actor;
+                delete searchData.q.query;
                 searchData.page = 1;
                 searchData.use = "discover";
             }
-        }
-
-        //  actor ─────────────────────────────────────────────────────────────────
-        // builtin.encyclopedia.people.person
-        let actor = builder.EntityRecognizer.findEntity(
-            args.entities,
-            "builtin.encyclopedia.people.person"
-        );
-        if (actor) {
-            searchData.use = "search";
-            searchData.page = 1;
-            searchData.q.query = actor.entity;
-            delete searchData.q["primary_release_date.gte"];
-            delete searchData.q["primary_release_date.lte"];
-            delete searchData.q.primary_release_year;
+            searchData.luo = true;
+        } else {
+            searchData.luo = false;
         }
 
         // ─────────────────────────────────────────────────────────────────
@@ -454,7 +594,13 @@ bot.dialog("/search", [
         log.debug(movie);
         log.debug(movieName);
 
-        doTmdbSearch(searchData, session);
+        // log.debug("===========will tmdb search ..");
+        // if (!process.env.BotEnv) session.send("===========will tmdb search ..");
+
+        // session.beginDialog("/doTmdbSearch");
+        // log.debug("===========did tmdb search ..");
+        // if (!process.env.BotEnv) session.send("===========did tmdb search ..");
+        doTmdbSearch(session);
         session.endDialog();
     }
 ]);
@@ -479,7 +625,6 @@ bot.dialog("/greetings", function(session, args) {
 });
 
 bot.dialog("/next", function(session, args) {
-    session.send("next page...");
     session.conversationData.search = session.conversationData.search || {
         use: "discover"
     };
@@ -490,131 +635,129 @@ bot.dialog("/next", function(session, args) {
         !searchData.page ||
         searchData.page == searchData.total_pages
     ) {
-        searchData.page = searchData.total_pages = null;
-        session.endDialog("no next page");
+        if (searchData.page == searchData.total_pages && searchData.actor) {
+            searchData.use = "discover";
+        } else {
+            searchData.page = searchData.total_pages = null;
+            session.endDialog("no next page");
+        }
     } else {
-        log.debug("go next.............");
+        session.send("next page...");
     }
     searchData.q.page = searchData.page + 1;
 
-    if (searchData.use == "search") {
-        if (searchData.q.query) {
-            log.debug("searchData.q:", searchData.q);
-            moviedb
-                .searchMovie(searchData.q)
-                .then(res => {
-                    // log.debug(res);
-                    searchData.page = res.page;
-                    searchData.total_pages = res.total_pages;
-                    handleApiResponse(session, res.results);
-                })
-                .catch(error => {
-                    handleErrorResponse(session, error);
-                });
-        }
-    } else if (searchData.use == "discover") {
-        if (searchData.tv) {
-            moviedb
-                .discoverTv(searchData.q)
-                .then(res => {
-                    // log.debug(res);
-                    searchData.page = res.page;
-                    searchData.total_pages = res.total_pages;
-                    handleApiResponse(session, res.results);
-                })
-                .catch(error => {
-                    handleErrorResponse(session, error);
-                });
-        } else {
-            moviedb
-                .discoverMovie(searchData.q)
-                .then(res => {
-                    log.debug(res);
-                    searchData.page = res.page;
-                    searchData.total_pages = res.total_pages;
-                    handleApiResponse(session, res.results);
-                })
-                .catch(error => {
-                    handleErrorResponse(session, error);
-                });
-        }
-    } else {
-        log.debug("no use var.............");
-    }
+    doTmdbSearch(session);
+    // session.beginDialog("/doTmdbSearch");
+
     session.endDialog();
 });
-//     .triggerAction({
-//         matches: /^(hd|hd)/i
-//     });
+bot.dialog("/goback", function(session, args) {
+    session.conversationData.search = session.conversationData.search || {
+        use: "discover"
+    };
 
-var helpintents = new builder.IntentDialog({
-    recognizers: [recognizer],
-    recognizeMode: builder.RecognizeMode.onBegin
-})
+    let searchData = session.conversationData.search;
+    if (_.isEmpty(searchData) || !searchData.page || searchData.page == 1) {
+        searchData.page = 1;
 
-    // .onBegin((session, args, next) => {
-    //     log("in help intents");
-    //     session.send("in help");
-    //     session.message.text = "-==";
-    //     helpintents.recognize(session, (err, res) => {
-    //         session.send("helpintents.recognize");
-    //         session.send(err);
-    //         session.send("recognize res:%j", res);
-    //         helpintents.replyReceived(session, res);
-    //     });
-    //     session.send("/help begin:arg: %j", args);
-    //     let data = _.pick(session, [
-    //         "message.text",
-    //         "conversationData",
-    //         "dialogData"
-    //     ]);
-    //     session.send("/help begin %j", data);
-    //     // next();
-    // })
+        session.endDialog("no Previous page");
+    } else {
+        session.send("Previous page...");
+    }
+    searchData.q.page = searchData.page - 1;
 
-    .matches("Utilities.Help", (session, args) => {
-        session.conversationData.help = true;
-        let data = _.pick(session, ["conversationData", "dialogData"]);
-        log.debug("/help in help");
-        log.debug(data);
-        log.debug(args);
-        session.send([
-            'you can say "search matrix/star war" and "start over" to clear memory',
-            'eg: "find some movie published in this month"'
-        ]);
-        session.endDialogWithResult({ response: "help end" });
-    })
-    .matches("Utilities.Cancel", session => {
-        session.send(
-            "/ You reached Cancel intent, you said '%s'.",
-            session.message.text
-        );
-        session.endDialog(" end for Cancel");
-    })
-    .onDefault(session => {
-        session.send('h: test channal.  only "help" you can say .');
-    });
-//     .triggerAction({
-//         matches: /^(hhhh|sssf)/i
-//         // matches: "Utilities.Help"
-//     });
-// helpintents.addDialogTrigger(intents, "helpDialog");
+    doTmdbSearch(session);
+    // session.beginDialog("/doTmdbSearch");
+
+    session.endDialog();
+});
+// var helpintents = new builder.IntentDialog({
+//     recognizers: [recognizer],
+//     recognizeMode: builder.RecognizeMode.onBegin
+// })
+
+//     // .onBegin((session, args, next) => {
+//     //     log("in help intents");
+//     //     session.send("in help");
+//     //     session.message.text = "-==";
+//     //     helpintents.recognize(session, (err, res) => {
+//     //         session.send("helpintents.recognize");
+//     //         session.send(err);
+//     //         session.send("recognize res:%j", res);
+//     //         helpintents.replyReceived(session, res);
+//     //     });
+//     //     session.send("/help begin:arg: %j", args);
+//     //     let data = _.pick(session, [
+//     //         "message.text",
+//     //         "conversationData",
+//     //         "dialogData"
+//     //     ]);
+//     //     session.send("/help begin %j", data);
+//     //     // next();
+//     // })
+
+//     .matches("Utilities.Help", (session, args) => {
+//         session.conversationData.help = true;
+//         let data = _.pick(session, ["conversationData", "dialogData"]);
+//         log.debug("/help in help");
+//         log.debug(data);
+//         log.debug(args);
+//         session.send([
+//             'you can say "search matrix/star war" and "start over" to clear memory',
+//             'eg: "find some movie published in this month"'
+//         ]);
+//         session.endDialogWithResult({ response: "help end" });
+//     })
+//     .matches("Utilities.Cancel", session => {
+//         session.send(
+//             "/ You reached Cancel intent, you said '%s'.",
+//             session.message.text
+//         );
+//         session.endDialog(" end for Cancel");
+//     })
+//     .onDefault(session => {
+//         // session.send('h: test channal.  only "help" you can say .');
+//         session.endDialog();
+//     })
+//     .triggerAction({ matches: /help/i });
+
 const handleErrorResponse = (session, error) => {
     session.send("Oops! Something went wrong. Try again later.");
+    session.endConversation();
     console.error(error);
 };
 const handleApiResponse = (session, movies) => {
     if (movies && movies.constructor === Array && movies.length > 0) {
-        if (movies.media_type) {
-            // "media_type": "person",
-            movies = _.find(
-                movies,
-                _.over([{ media_type: "movie" }, { media_type: "tv" }])
-            );
-        }
+        log.debug(
+            "handleApiResponse 1 =====>>  ",
+            session.conversationData.search.total_pages,
+            movies.slice(0, 3)
+        );
+
         var cards = [];
-        for (var i = 0; i < movies.length; i++) {
-            cards.push(constructCard(session, movies[i]));
+        var cardsPush = function(movPersonList, resCards) {
+            let tmpPids = [];
+            for (var i = 0; i < movPersonList.length; i++) {
+                if (
+                    movPersonList[i].media_type &&
+                    movPersonList[i].media_type == "person"
+                ) {
+                    tmpPids.push(movPersonList[i].id);
+                    resCards = cardsPush(movPersonList[i].known_for, resCards);
+                } else {
+                    resCards.push(constructCard(session, movPersonList[i]));
+                }
+            }
+            if (tmpPids.length != 0 && session.conversationData.search.actor) {
+                session.conversationData.search.actorIds = tmpPids[0];
+            }
+            return resCards;
+        };
+
+        cards = cardsPush(movies, cards);
+
+        if (!process.env.BotEnv) {
+            cards = cards.slice(0, 3);
         }
 
         // create reply with Carousel AttachmentLayout
@@ -624,7 +767,10 @@ const handleApiResponse = (session, movies) => {
             .attachments(cards);
         session.send(reply);
     } else {
-        session.send("Couldn't find movies for this one");
+        session.send([
+            "Couldn't find something for this one",
+            "I can't find anything :(  maybe try other words"
+        ]);
     }
 };
 var tmdbImagePath = (posterPath, back = false) => {
@@ -641,8 +787,10 @@ var tmdbImagePath = (posterPath, back = false) => {
         ]
     }${posterPath}`;
 };
-//movieCtx.poster_path
 const constructCard = (session, movieCtx) => {
+    if (movieCtx.name) {
+        movieCtx.title = movieCtx.name;
+    }
     return new builder.HeroCard(session)
         .title(movieCtx.title)
         .text(movieCtx.id.toString())
@@ -659,8 +807,73 @@ const constructCard = (session, movieCtx) => {
     // ])
 };
 bot.dialog("/", intents);
-bot.dialog("/help", helpintents);
-function doTmdbSearch(searchData, session) {
+bot
+    .dialog("/help", (session, args) => {
+        session.conversationData.help = true;
+        let data = _.pick(session, ["conversationData", "dialogData"]);
+        log.debug("/help in help");
+        log.debug(data);
+        log.debug(args);
+        session.send([
+            'you can say "search <<matrix>>/<<star war>>" or "start over" to clear memory',
+
+            'eg: "find some movie published in this month"'
+        ]);
+        session.endDialogWithResult({ response: "help end" });
+    })
+    .triggerAction({ matches: /help/i });
+
+// bot.dialog("/doTmdbSearch", doTmdbSearch);
+async function doTmdbSearch(session) {
+    let searchData = session.conversationData.search || {
+        use: "discover"
+    };
+
+    if (
+        searchData.actor &&
+        (searchData.q.with_genres ||
+            searchData.q["primary_release_date.gte"] ||
+            searchData.q["primary_release_date.lte"] ||
+            searchData.q.primary_release_year ||
+            searchData.use == "discover") &&
+        !searchData.luo
+    ) {
+        // 某演员 某类型 的电影
+        log.debug("=================>>> 某演员 某类型/时间 的电影");
+
+        if (!searchData.actorIds) {
+            log.debug("=================>>>finded person0:");
+            try {
+                res = await moviedb.searchPerson({ query: searchData.actor });
+            } catch (error) {
+                handleErrorResponse(session, error);
+            }
+
+            log.debug("=================>>>finded person:", res);
+            if (res.results.length != 0) {
+                log.debug(
+                    "=================>>>finded person2:",
+                    res.results[0].id
+                );
+
+                searchData.actorIds = res.results[0].id;
+            } else {
+                let tmpact = searchData.actor;
+                searchData.actor = null;
+
+                session.endDialog([
+                    tmpact + " not find.",
+                    "Can not find " + tmpact
+                ]);
+            }
+        }
+        log.debug("=================>>>finded person3:", searchData.actorIds);
+
+        delete searchData.q.query;
+        searchData.q.with_people = searchData.actorIds;
+        searchData.use = "discover";
+    }
+
     if (searchData.use == "search") {
         let searchFn;
         log.debug("use search");
@@ -669,10 +882,15 @@ function doTmdbSearch(searchData, session) {
                 searchData.q.primary_release_year = moment(
                     searchData.q["primary_release_date.gte"]
                 ).format("YYYY");
+                log.debug("===> use movie search:", searchData.q);
                 searchFn = moviedb.searchMovie;
             } else {
+                log.debug("===> use Multi search:", searchData.q);
                 searchFn = moviedb.searchMulti;
             }
+
+            // searchFn = moviedb.searchMovie;
+
             log.debug("searchData.q:", searchData.q);
             searchFn(searchData.q)
                 .then(res => {
@@ -686,12 +904,12 @@ function doTmdbSearch(searchData, session) {
                 });
         }
     } else if (searchData.use == "discover") {
-        log.debug("use discover");
+        log.debug("use discover:", searchData.q);
         if (searchData.tv) {
             moviedb
                 .discoverTv(searchData.q)
                 .then(res => {
-                    // log.debug(res);
+                    log.debug(res);
                     searchData.page = res.page;
                     searchData.total_pages = res.total_pages;
                     handleApiResponse(session, res.results);
@@ -700,6 +918,7 @@ function doTmdbSearch(searchData, session) {
                     handleErrorResponse(session, error);
                 });
         } else {
+            // if (searchData.q.query)
             moviedb
                 .discoverMovie(searchData.q)
                 .then(res => {
