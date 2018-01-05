@@ -737,6 +737,10 @@ const handleApiResponse = (session, movies) => {
         var cards = [];
         var cardsPush = function(movPersonList, resCards) {
             let tmpPids = [];
+            // if (movPersonList.length>0 && (movPersonList[i].media_type &&
+            //     movPersonList[i].media_type == "person")){
+
+            // }
             for (var i = 0; i < movPersonList.length; i++) {
                 if (
                     movPersonList[i].media_type &&
