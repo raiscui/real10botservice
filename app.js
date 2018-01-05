@@ -187,8 +187,9 @@ var intents = new builder.IntentDialog({ recognizers: [recognizer] })
         searchData.luo = true;
 
         // session.beginDialog("/doTmdbSearch");
-        doTmdbSearch(session);
-        session.endDialog();
+        doTmdbSearch(session).then(() => {
+            session.endDialog();
+        });
 
         // session.send(
         //     "h Sorry, I did not understand '%s'.",
@@ -600,8 +601,9 @@ bot.dialog("/search", [
         // session.beginDialog("/doTmdbSearch");
         // log.debug("===========did tmdb search ..");
         // if (!process.env.BotEnv) session.send("===========did tmdb search ..");
-        doTmdbSearch(session);
-        session.endDialog();
+        doTmdbSearch(session).then(() => {
+            session.endDialog();
+        });
     }
 ]);
 intents.dialogResumed = (session, args) => {
@@ -646,10 +648,9 @@ bot.dialog("/next", function(session, args) {
     }
     searchData.q.page = searchData.page + 1;
 
-    doTmdbSearch(session);
-    // session.beginDialog("/doTmdbSearch");
-
-    session.endDialog();
+    doTmdbSearch(session).then(() => {
+        session.endDialog();
+    });
 });
 bot.dialog("/goback", function(session, args) {
     session.conversationData.search = session.conversationData.search || {
@@ -666,10 +667,9 @@ bot.dialog("/goback", function(session, args) {
     }
     searchData.q.page = searchData.page - 1;
 
-    doTmdbSearch(session);
-    // session.beginDialog("/doTmdbSearch");
-
-    session.endDialog();
+    doTmdbSearch(session).then(() => {
+        session.endDialog();
+    });
 });
 // var helpintents = new builder.IntentDialog({
 //     recognizers: [recognizer],
@@ -892,44 +892,44 @@ async function doTmdbSearch(session) {
             // searchFn = moviedb.searchMovie;
 
             log.debug("searchData.q:", searchData.q);
-            searchFn(searchData.q)
-                .then(res => {
-                    // log.info(res)
-                    searchData.page = res.page;
-                    searchData.total_pages = res.total_pages;
-                    handleApiResponse(session, res.results);
-                })
-                .catch(error => {
-                    handleErrorResponse(session, error);
-                });
+
+            try {
+                res = await searchFn(searchData.q);
+            } catch (error) {
+                handleErrorResponse(session, error);
+            }
+
+            // log.info(res)
+            searchData.page = res.page;
+            searchData.total_pages = res.total_pages;
+            handleApiResponse(session, res.results);
         }
     } else if (searchData.use == "discover") {
         log.debug("use discover:", searchData.q);
         if (searchData.tv) {
-            moviedb
-                .discoverTv(searchData.q)
-                .then(res => {
-                    log.debug(res);
-                    searchData.page = res.page;
-                    searchData.total_pages = res.total_pages;
-                    handleApiResponse(session, res.results);
-                })
-                .catch(error => {
-                    handleErrorResponse(session, error);
-                });
+            try {
+                res = await moviedb.discoverTv(searchData.q);
+            } catch (error) {
+                handleErrorResponse(session, error);
+            }
+
+            log.debug(res);
+            searchData.page = res.page;
+            searchData.total_pages = res.total_pages;
+            handleApiResponse(session, res.results);
         } else {
             // if (searchData.q.query)
-            moviedb
-                .discoverMovie(searchData.q)
-                .then(res => {
-                    // log.debug(res);
-                    searchData.page = res.page;
-                    searchData.total_pages = res.total_pages;
-                    handleApiResponse(session, res.results);
-                })
-                .catch(error => {
-                    handleErrorResponse(session, error);
-                });
+
+            try {
+                res = await moviedb.discoverMovie(searchData.q);
+            } catch (error) {
+                handleErrorResponse(session, error);
+            }
+
+            // log.debug(res);
+            searchData.page = res.page;
+            searchData.total_pages = res.total_pages;
+            handleApiResponse(session, res.results);
         }
     }
 }
