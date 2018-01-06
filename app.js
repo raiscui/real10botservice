@@ -181,7 +181,8 @@ var intents = new builder.IntentDialog({ recognizers: [recognizer] })
             delete searchData.actor;
 
             searchData.q.query = null;
-            searchData.page = 1;
+
+            searchData.page = searchData.q.page = 1;
             searchData.use = "discover";
         }
         searchData.luo = true;
@@ -264,8 +265,10 @@ bot.dialog("/search", [
         };
 
         let searchData = session.conversationData.search;
+        searchData.qs = null;
         searchData.page = 1;
         searchData.q = searchData.q || { sort_by: "popularity.desc" };
+        searchData.q.page = 1;
         // • • • • •
         let data = _.pick(session, [
             "message.text",
@@ -306,16 +309,29 @@ bot.dialog("/search", [
             "builtin.encyclopedia.people.person"
         );
         log.debug(" actors:", actors);
+        // actor = _.chain(actors)
+        //     .map(entitie => {
+        //         entitie.score = entitie.score || 1.0;
+        //         return entitie;
+        //     })
+        //     .filter(entitie => {
+        //         return entitie.score > 0.4 || !entitie.score;
+        //     })
+
+        //     .maxBy("score")
+        //     .get("entity")
+        //     .value();
         actor = _.chain(actors)
-            .map(entitie => {
-                entitie.score = entitie.score || 1.0;
-                return entitie;
-            })
+            // .map(entitie => {
+            //     entitie.score = entitie.score || 1.0;
+            //     return entitie;
+            // })
             .filter(entitie => {
                 return entitie.score > 0.4 || !entitie.score;
             })
+            .first()
 
-            .maxBy("score")
+            // .maxBy("score")
             .get("entity")
             .value();
 
@@ -324,9 +340,9 @@ bot.dialog("/search", [
             log.debug("find actor:", actor);
             searchData.actor = actor;
             delete searchData.actorIds;
-            searchData.page = 1;
+            searchData.page = searchData.q.page = 1;
         } else if (actor && searchData.actor) {
-            searchData.page = 1;
+            searchData.page = searchData.q.page = 1;
 
             //change
             log.debug("find actor:", actor);
@@ -378,7 +394,7 @@ bot.dialog("/search", [
 
         if ((movieName || actor) && !searchData.q.query) {
             // 新发现
-            searchData.page = 1;
+            searchData.page = searchData.q.page = 1;
             searchData.q.query = movieName || actor;
             searchData.use = "search";
             delete searchData.q["primary_release_date.gte"];
@@ -389,7 +405,7 @@ bot.dialog("/search", [
             // 替换
             if ((movieName || actor) != searchData.q.query) {
                 searchData.q.query = movieName || actor;
-                searchData.page = 1;
+                searchData.page = searchData.q.page = 1;
                 searchData.use = "search";
                 delete searchData.q["primary_release_date.gte"];
                 delete searchData.q["primary_release_date.lte"];
@@ -582,7 +598,7 @@ bot.dialog("/search", [
                 delete searchData.q.with_genres;
                 delete searchData.actor;
                 delete searchData.q.query;
-                searchData.page = 1;
+                searchData.page = searchData.q.page = 1;
                 searchData.use = "discover";
             }
             searchData.luo = true;
@@ -602,8 +618,69 @@ bot.dialog("/search", [
         // log.debug("===========did tmdb search ..");
         // if (!process.env.BotEnv) session.send("===========did tmdb search ..");
         doTmdbSearch(session).then(() => {
-            session.endDialog();
+            if (
+                !searchData.actor &&
+                !searchData.q.with_genres &&
+                searchData.use == "discover"
+            ) {
+                builder.Prompts.text(session, [
+                    "What movie genre or actor you like?",
+                    "emm.. you can use actor name find movie"
+                ]);
+            } else if (
+                !searchData.actor &&
+                searchData.use == "discover" &&
+                !searchData.stopconfirm
+            ) {
+                searchData.qs = "Johnny Depp";
+                builder.Prompts.confirm(session, "how about Johnny Depp?");
+            } else if (!searchData.q.with_genres) {
+                builder.Prompts.text(session, [
+                    "you can say 'action movie'|'romance movie'|'science fiction'|'war' define the genre ",
+                    "you can say 'horror movie'|'fantasy movie'|'animation'|'adventure' define the genre "
+                ]);
+            } else {
+                // searchData.qs = "restart";
+                // builder.Prompts.confirm(session, "Do you want start over?");
+                next({ response: "wait" });
+            }
+            // session.endDialog();
         });
+    },
+    (session, res) => {
+        let searchData = session.conversationData.search;
+        log.debug("res.response:============>>>", res.response);
+        if (res.response == "done") {
+            session.endConversation();
+        } else if (res.response == "wait") {
+            session.endDialog();
+        } else if (typeof res.response == "boolean") {
+            if (res.response && searchData.qs == "Johnny Depp") {
+                session.message.text = "Johnny Depp";
+
+                intents.recognize(session, (err, ress) => {
+                    // session.send(err);
+                    // session.send("recognize res:%j", ress);
+                    // session.routeToActiveDialog();
+                    intents.replyReceived(session, ress);
+                });
+            } else if (
+                res.response == false &&
+                searchData.qs == "Johnny Depp"
+            ) {
+                searchData.stopconfirm = true;
+                session.endDialog();
+            }
+        } else {
+            session.message.text = res.response;
+
+            intents.recognize(session, (err, ress) => {
+                // session.send(err);
+                // session.send("recognize res:%j", ress);
+                // session.routeToActiveDialog();
+                intents.replyReceived(session, ress);
+            });
+        }
     }
 ]);
 intents.dialogResumed = (session, args) => {
@@ -634,23 +711,30 @@ bot.dialog("/next", function(session, args) {
     let searchData = session.conversationData.search;
     if (
         _.isEmpty(searchData) ||
-        !searchData.page ||
-        searchData.page == searchData.total_pages
+        _.isNil(searchData.page) ||
+        searchData.page >= (searchData.total_pages || 1)
     ) {
         if (searchData.page == searchData.total_pages && searchData.actor) {
             searchData.use = "discover";
+            searchData.page = 0;
+
+            session.send("next page actor...");
+            searchData.q.page = searchData.page + 1;
+
+            doTmdbSearch(session).then(() => {
+                session.endDialog();
+            });
         } else {
-            searchData.page = searchData.total_pages = null;
             session.endDialog("no next page");
         }
     } else {
         session.send("next page...");
-    }
-    searchData.q.page = searchData.page + 1;
+        searchData.q.page = searchData.page + 1;
 
-    doTmdbSearch(session).then(() => {
-        session.endDialog();
-    });
+        doTmdbSearch(session).then(() => {
+            session.endDialog();
+        });
+    }
 });
 bot.dialog("/goback", function(session, args) {
     session.conversationData.search = session.conversationData.search || {
@@ -658,18 +742,22 @@ bot.dialog("/goback", function(session, args) {
     };
 
     let searchData = session.conversationData.search;
-    if (_.isEmpty(searchData) || !searchData.page || searchData.page == 1) {
+    if (
+        _.isEmpty(searchData) ||
+        _.isNil(searchData.page) ||
+        searchData.page == 1
+    ) {
         searchData.page = 1;
 
         session.endDialog("no Previous page");
     } else {
         session.send("Previous page...");
-    }
-    searchData.q.page = searchData.page - 1;
+        searchData.q.page = searchData.page - 1;
 
-    doTmdbSearch(session).then(() => {
-        session.endDialog();
-    });
+        doTmdbSearch(session).then(() => {
+            session.endDialog();
+        });
+    }
 });
 // var helpintents = new builder.IntentDialog({
 //     recognizers: [recognizer],
@@ -746,8 +834,14 @@ const handleApiResponse = (session, movies) => {
                     movPersonList[i].media_type &&
                     movPersonList[i].media_type == "person"
                 ) {
-                    tmpPids.push(movPersonList[i].id);
-                    resCards = cardsPush(movPersonList[i].known_for, resCards);
+                    if (tmpPids.length < 1) {
+                        tmpPids.push(movPersonList[i].id);
+
+                        resCards = cardsPush(
+                            movPersonList[i].known_for,
+                            resCards
+                        );
+                    }
                 } else {
                     resCards.push(constructCard(session, movPersonList[i]));
                 }
@@ -771,6 +865,7 @@ const handleApiResponse = (session, movies) => {
             .attachments(cards);
         session.send(reply);
     } else {
+        delete session.conversationData.search;
         session.send([
             "Couldn't find something for this one",
             "I can't find anything :(  maybe try other words"
