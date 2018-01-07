@@ -633,7 +633,11 @@ bot.dialog("/search", [
                 _.random(1, 3) > 2
             ) {
                 searchData.qs = "Johnny Depp";
-                builder.Prompts.text(session, 'how about say "Johnny Depp" ?');
+                builder.Prompts.text(session, [
+                    'how about say "Johnny Depp" ?',
+                    'how about say "Jason Statham" ?',
+                    'how about say "Will Smith" ?'
+                ]);
             } else if (!searchData.q.with_genres && _.random(1, 2) > 1) {
                 builder.Prompts.text(session, [
                     "you can say 'action movie'|'romance movie'|'science fiction'|'war' define the genre ",
