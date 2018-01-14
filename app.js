@@ -928,9 +928,19 @@ bot
 
 // bot.dialog("/doTmdbSearch", doTmdbSearch);
 async function doTmdbSearch(session) {
-    let searchData = session.conversationData.search || {
-        use: "discover"
+    let defQ = {
+        include_adult: false,
+        without_keywords: "190370,33998,572",
+        certification_country: "US",
+        "certification.lte": "PG-13"
     };
+
+    let searchData = session.conversationData.search || {
+        use: "discover",
+        q: defQ
+    };
+
+    searchData.q = _.merge(searchData.q, defQ);
 
     if (
         searchData.actor &&
